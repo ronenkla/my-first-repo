@@ -141,6 +141,41 @@
   .leaflet-popup-content { direction: rtl; text-align: right; font-size: 14px; line-height: 1.5; margin: 10px 14px; }
   .leaflet-popup-content b { font-size: 15px; }
 
+  /* שידור חי */
+  .live { display: inline-flex; align-items: center; gap: 6px; }
+  .live i { width: 9px; height: 9px; border-radius: 50%; background: #9ca3af; display: inline-block; }
+  .live.on i { background: #22c55e; animation: blink 1.6s infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+
+  tbody tr.new td:first-child { box-shadow: inset -4px 0 0 #22c55e; }
+  .badge-new {
+    display: inline-block; margin-inline-start: 6px; padding: 0 6px; border-radius: 5px;
+    background: #22c55e; color: #fff; font-size: 11px; font-weight: 700; vertical-align: middle;
+  }
+
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translate(-50%, 140%);
+    z-index: 2000; max-width: calc(100vw - 32px);
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-inline-start: 5px solid #ef4444;
+    border-radius: 12px; box-shadow: var(--shadow);
+    padding: 12px 16px; cursor: pointer;
+    opacity: 0; visibility: hidden;
+    transition: transform .35s ease, opacity .35s ease, visibility .35s;
+  }
+  .toast.show { transform: translate(-50%, 0); opacity: 1; visibility: visible; }
+  .toast b { display: block; font-size: 16px; }
+  .toast span { color: var(--muted); font-size: 14px; }
+
+  .pulse-icon span {
+    display: block; width: 40px; height: 40px; border-radius: 50%;
+    border: 3px solid #ef4444; animation: ring 1.5s ease-out infinite;
+  }
+  @keyframes ring { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .live.on i, .pulse-icon span { animation: none; }
+  }
+
   @media (max-width: 900px) {
     .layout { grid-template-columns: 1fr; height: auto; }
     .map-card { height: 60vh; min-height: 360px; order: -1; }
@@ -157,6 +192,12 @@
   <p class="lead">המפה מציגה את רעידות האדמה שנמדדו לאחרונה על פני כדור הארץ, יחד עם גבולות הלוחות הטקטוניים. שימו לב היכן מתרכזות הרעידות.</p>
 
   <div class="toolbar">
+    <label>אזור
+      <select id="region">
+        <option value="world" selected>כל העולם</option>
+        <option value="israel">ישראל והסביבה</option>
+      </select>
+    </label>
     <label>תקופה
       <select id="period">
         <option value="day">24 השעות האחרונות</option>
@@ -166,13 +207,14 @@
     </label>
     <label>עוצמה מינימלית
       <select id="minmag">
+        <option value="1" hidden>1 ומעלה (גם חלשות)</option>
         <option value="2.5">2.5 ומעלה</option>
         <option value="4.5" selected>4.5 ומעלה</option>
         <option value="significant">רק רעידות משמעותיות</option>
       </select>
     </label>
     <label><input type="checkbox" id="plates" checked> גבולות לוחות</label>
-    <div class="stats" id="stats"></div>
+    <div class="stats"><span class="live" id="live"><i></i><span>מתחבר לשידור חי…</span></span><span id="stats" style="display:contents"></span></div>
   </div>
 </header>
 
@@ -236,8 +278,11 @@
   </section>
 </main>
 
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
 <footer class="wrap">
-  נתוני רעידות: <a href="https://earthquake.usgs.gov/earthquakes/feed/" target="_blank" rel="noopener">USGS – הסקר הגאולוגי של ארה"ב</a> (מתעדכן אוטומטית כל 5 דקות) ·
+  נתוני רעידות: <a href="https://earthquake.usgs.gov/earthquakes/feed/" target="_blank" rel="noopener">USGS – הסקר הגאולוגי של ארה"ב</a> (כל העולם, מתעדכן כל 5 דקות) ·
+  <a href="https://www.seismicportal.eu/" target="_blank" rel="noopener">EMSC – המרכז הסייסמולוגי האירופי-ים תיכוני</a> (ישראל והסביבה, ושידור חי של רעידות חדשות) ·
   גבולות לוחות: <a href="https://github.com/fraxen/tectonicplates" target="_blank" rel="noopener">PB2002, Bird 2003</a> ·
   מפה: © Esri, © OpenStreetMap
 </footer>
@@ -304,38 +349,115 @@
   }
 
   // ---------- נתונים ----------
-  let quakes = [];
+  const EMSC_QUERY = "https://www.seismicportal.eu/fdsnws/event/1/query";
+  const EMSC_LIVE = "wss://www.seismicportal.eu/standing_order/websocket";
+  const HOME = { lat: 31.5, lon: 35, radiusKm: 500 };   // "ישראל והסביבה"
+  const PERIOD_MS = { day: 864e5, week: 7 * 864e5, month: 30 * 864e5 };
+
+  let baseQuakes = [];   // מהטעינה האחרונה (USGS או EMSC)
+  let liveQuakes = [];   // רעידות שהגיעו בשידור החי מאז שהעמוד נפתח
+  let quakes = [];       // מה שמוצג בפועל
   let sortBy = "time";
   let activeId = null;
+  const newIds = new Map();   // id -> עד מתי לסמן כ"חדש"
   const markers = new Map();
+  const pulseLayer = L.layerGroup().addTo(map);
+  const homeCircle = L.circle([HOME.lat, HOME.lon], {
+    radius: HOME.radiusKm * 1000, color: css.getPropertyValue("--accent").trim(),
+    weight: 2, dashArray: "6 6", fill: false, interactive: false
+  });
+
+  const $ = id => document.getElementById(id);
+  const region = () => $("region").value;
+
+  function minMag() {
+    const v = $("minmag").value;
+    if (v === "significant") return region() === "world" ? 6 : 4;
+    return parseFloat(v);
+  }
+
+  function distKm(lat1, lon1, lat2, lon2) {
+    const r = Math.PI / 180;
+    const a = Math.sin((lat2 - lat1) * r / 2) ** 2 +
+      Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin((lon2 - lon1) * r / 2) ** 2;
+    return 12742 * Math.asin(Math.sqrt(a));
+  }
+
+  function titleCase(s) {
+    return String(s || "").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function fromUSGS(f) {
+    const p = f.properties, c = f.geometry.coordinates;
+    return {
+      id: "usgs_" + f.id, mag: p.mag, place: p.place || "מיקום לא ידוע",
+      time: p.time, depth: c[2], lat: c[1], lon: c[0],
+      tsunami: p.tsunami === 1, url: p.url, source: "USGS"
+    };
+  }
+
+  function fromEMSC(f) {
+    const p = f.properties, c = f.geometry.coordinates;
+    const unid = p.unid || f.id;
+    return {
+      id: "emsc_" + unid, mag: p.mag, place: titleCase(p.flynn_region) || "מיקום לא ידוע",
+      time: Date.parse(p.time), depth: p.depth ?? -c[2], lat: p.lat ?? c[1], lon: p.lon ?? c[0],
+      tsunami: false, url: "https://www.seismicportal.eu/eventdetails.html?unid=" + encodeURIComponent(unid),
+      source: "EMSC"
+    };
+  }
+
+  // האם הרעידה כבר קיימת ברשימה (אותה רעידה שדווחה ע"י שני מכונים)
+  function isDuplicate(q, list) {
+    return list.some(o => o.id === q.id ||
+      (Math.abs(o.time - q.time) < 90e3 && distKm(o.lat, o.lon, q.lat, q.lon) < 150));
+  }
+
+  function matchesFilter(q) {
+    if (q.mag == null || isNaN(q.time)) return false;
+    if (q.mag < minMag()) return false;
+    if (Date.now() - q.time > PERIOD_MS[$("period").value]) return false;
+    if (region() === "israel" && distKm(HOME.lat, HOME.lon, q.lat, q.lon) > HOME.radiusKm) return false;
+    return true;
+  }
+
+  function merge() {
+    const extra = liveQuakes.filter(q => matchesFilter(q) && !isDuplicate(q, baseQuakes));
+    quakes = baseQuakes.concat(extra);
+  }
+
+  function sourceUrl() {
+    const period = $("period").value;
+    if (region() === "world") {
+      return FEED($("minmag").value, period);
+    }
+    const start = new Date(Date.now() - PERIOD_MS[period]).toISOString().slice(0, 19);
+    return EMSC_QUERY + "?format=json&lat=" + HOME.lat + "&lon=" + HOME.lon +
+      "&maxradius=" + (HOME.radiusKm / 111.2).toFixed(2) + "&minmag=" + minMag() +
+      "&start=" + start + "&limit=2000&orderby=time";
+  }
 
   function load() {
-    const period = document.getElementById("period").value;
-    const mag = document.getElementById("minmag").value;
-    document.getElementById("rows").innerHTML = '<tr><td colspan="4" class="msg">טוען נתונים…</td></tr>';
+    const world = region() === "world";
+    $("rows").innerHTML = '<tr><td colspan="4" class="msg">טוען נתונים…</td></tr>';
 
-    fetch(FEED(mag, period))
-      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    fetch(sourceUrl())
+      .then(r => {
+        if (r.status === 204) return { features: [] };   // EMSC: אין תוצאות
+        if (!r.ok) throw new Error(r.status);
+        return r.json();
+      })
       .then(data => {
-        quakes = data.features
-          .filter(f => f.properties.mag != null)
-          .map(f => ({
-            id: f.id,
-            mag: f.properties.mag,
-            place: f.properties.place || "מיקום לא ידוע",
-            time: f.properties.time,
-            depth: f.geometry.coordinates[2],
-            lat: f.geometry.coordinates[1],
-            lon: f.geometry.coordinates[0],
-            tsunami: f.properties.tsunami === 1,
-            url: f.properties.url
-          }));
+        baseQuakes = (data.features || [])
+          .map(world ? fromUSGS : fromEMSC)
+          .filter(q => q.mag != null && !isNaN(q.time));
+        merge();
         drawMarkers();
         drawTable();
-        drawStats(data.metadata.generated);
+        drawStats(world ? data.metadata.generated : Date.now());
       })
       .catch(() => {
-        document.getElementById("rows").innerHTML =
+        $("rows").innerHTML =
           '<tr><td colspan="4" class="msg">לא הצלחנו לטעון את הנתונים. בדקו את החיבור לאינטרנט ונסו שוב.</td></tr>';
       });
   }
@@ -346,7 +468,7 @@
       fullFmt.format(q.time) + "<br>" +
       "עומק: " + Math.round(q.depth) + ' ק"מ' +
       (q.tsunami ? "<br>⚠️ הופקה אזהרת צונאמי" : "") +
-      '<br><a href="' + esc(q.url) + '" target="_blank" rel="noopener">פרטים נוספים (USGS)</a>';
+      '<br><a href="' + esc(q.url) + '" target="_blank" rel="noopener">פרטים נוספים (' + q.source + ")</a>";
   }
 
   function drawMarkers() {
@@ -367,29 +489,39 @@
     });
   }
 
+  function isNew(id) {
+    const until = newIds.get(id);
+    if (until && until > Date.now()) return true;
+    newIds.delete(id);
+    return false;
+  }
+
   function drawTable() {
     const list = [...quakes].sort((a, b) => sortBy === "mag" ? b.mag - a.mag : b.time - a.time);
-    const tbody = document.getElementById("rows");
+    const tbody = $("rows");
     if (!list.length) {
       tbody.innerHTML = '<tr><td colspan="4" class="msg">אין רעידות שמתאימות לסינון הזה.</td></tr>';
       return;
     }
-    tbody.innerHTML = list.map(q =>
-      '<tr data-id="' + esc(q.id) + '"' + (q.id === activeId ? ' class="active"' : "") + ">" +
+    tbody.innerHTML = list.map(q => {
+      const cls = [q.id === activeId ? "active" : "", isNew(q.id) ? "new" : ""].join(" ").trim();
+      return '<tr data-id="' + esc(q.id) + '"' + (cls ? ' class="' + cls + '"' : "") + ">" +
         '<td><span class="mag" style="background:' + magColor(q.mag) + (q.mag >= 6 ? ";color:#fff" : "") + '">' + q.mag.toFixed(1) + "</span></td>" +
-        '<td class="place">' + esc(q.place) + "</td>" +
+        '<td class="place">' + esc(q.place) + (isNew(q.id) ? '<span class="badge-new">חדש</span>' : "") + "</td>" +
         '<td class="num">' + timeFmt.format(q.time) + "</td>" +
         '<td class="num">' + Math.round(q.depth) + ' ק"מ</td>' +
-      "</tr>"
-    ).join("");
+      "</tr>";
+    }).join("");
   }
 
+  let lastGenerated = Date.now();
   function drawStats(generated) {
+    if (generated) lastGenerated = generated;
     const strongest = quakes.reduce((a, b) => (!a || b.mag > a.mag ? b : a), null);
-    document.getElementById("stats").innerHTML =
+    $("stats").innerHTML =
       "<span>מספר רעידות: <b>" + quakes.length.toLocaleString("he-IL") + "</b></span>" +
       (strongest ? "<span>החזקה ביותר: <b>" + strongest.mag.toFixed(1) + "</b></span>" : "") +
-      "<span>עודכן: <b>" + timeFmt.format(generated) + "</b></span>";
+      "<span>עודכן: <b>" + timeFmt.format(lastGenerated) + "</b></span>";
   }
 
   function selectRow(id, scroll) {
@@ -402,18 +534,91 @@
     }
   }
 
-  // ---------- אירועים ----------
-  document.getElementById("rows").addEventListener("click", e => {
-    const tr = e.target.closest("tr[data-id]");
-    if (!tr) return;
-    const id = tr.dataset.id;
+  function focusQuake(id) {
     const q = quakes.find(x => x.id === id);
     const m = markers.get(id);
     if (!q || !m) return;
-    selectRow(id, false);
+    selectRow(id, true);
     map.flyTo([q.lat, q.lon], Math.max(map.getZoom(), 5), { duration: 0.8 });
     map.once("moveend", () => m.openPopup());
-    if (window.innerWidth <= 900) document.getElementById("map").scrollIntoView({ behavior: "smooth" });
+  }
+
+  // ---------- שידור חי (EMSC WebSocket) ----------
+  let toastTimer = null;
+  function showToast(q) {
+    const t = $("toast");
+    t.innerHTML = "<b>רעידת אדמה חדשה! עוצמה " + q.mag.toFixed(1) + "</b>" +
+      '<span><span dir="ltr">' + esc(q.place) + "</span> · " + timeFmt.format(q.time) + " · לחצו להצגה במפה</span>";
+    t.onclick = () => { focusQuake(q.id); t.classList.remove("show"); };
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 12000);
+  }
+
+  function pulse(q) {
+    const p = L.marker([q.lat, q.lon], {
+      icon: L.divIcon({ className: "pulse-icon", html: "<span></span>", iconSize: [40, 40] }),
+      interactive: false
+    }).addTo(pulseLayer);
+    setTimeout(() => pulseLayer.removeLayer(p), 3 * 60e3);
+  }
+
+  function setLive(on, text) {
+    $("live").classList.toggle("on", on);
+    $("live").querySelector("span").textContent = text;
+  }
+
+  function onLiveQuake(msg) {
+    if (!msg || !msg.data || !msg.data.properties) return;
+    const q = fromEMSC(msg.data);
+    if (q.mag == null || isNaN(q.time)) return;
+
+    const i = liveQuakes.findIndex(o => o.id === q.id);
+    const isUpdate = msg.action === "update" || i >= 0;
+    if (i >= 0) liveQuakes[i] = q; else liveQuakes.push(q);
+    // לא שומרים יותר מחודש אחורה
+    liveQuakes = liveQuakes.filter(o => Date.now() - o.time < PERIOD_MS.month);
+
+    if (!matchesFilter(q)) return;
+    // בתצוגת ישראל הנתונים עצמם מ-EMSC – מעדכנים רעידה קיימת במקום להוסיף כפילות
+    const j = baseQuakes.findIndex(o => o.id === q.id);
+    if (j >= 0) baseQuakes[j] = q;
+    else if (isDuplicate(q, baseQuakes)) return;
+
+    merge();
+    drawMarkers();
+    if (!isUpdate) {
+      newIds.set(q.id, Date.now() + 15 * 60e3);
+      pulse(q);
+      showToast(q);
+    }
+    drawTable();
+    drawStats();
+  }
+
+  let retry = 0;
+  function connectLive() {
+    let ws;
+    try { ws = new WebSocket(EMSC_LIVE); } catch (e) { scheduleReconnect(); return; }
+    ws.onopen = () => { retry = 0; setLive(true, "שידור חי: מחובר"); };
+    ws.onmessage = e => {
+      try { onLiveQuake(JSON.parse(e.data)); } catch (err) { /* הודעה לא תקינה – מדלגים */ }
+    };
+    ws.onclose = () => scheduleReconnect();
+    ws.onerror = () => ws.close();
+  }
+  function scheduleReconnect() {
+    setLive(false, "שידור חי: מתחבר מחדש…");
+    retry = Math.min(retry + 1, 6);
+    setTimeout(connectLive, 1000 * 2 ** retry);   // 2, 4, 8 … עד 64 שניות
+  }
+
+  // ---------- אירועים ----------
+  $("rows").addEventListener("click", e => {
+    const tr = e.target.closest("tr[data-id]");
+    if (!tr) return;
+    focusQuake(tr.dataset.id);
+    if (window.innerWidth <= 900) $("map").scrollIntoView({ behavior: "smooth" });
   });
 
   document.querySelectorAll(".seg button").forEach(btn => {
@@ -424,10 +629,32 @@
     });
   });
 
-  document.getElementById("period").addEventListener("change", load);
-  document.getElementById("minmag").addEventListener("change", load);
+  $("region").addEventListener("change", () => {
+    const israel = region() === "israel";
+    const opt1 = $("minmag").querySelector('option[value="1"]');
+    opt1.hidden = !israel;
+    if (israel) {
+      $("minmag").value = "1";
+      homeCircle.addTo(map);
+      map.flyToBounds(homeCircle.getBounds(), { duration: 0.8 });
+    } else {
+      if ($("minmag").value === "1") $("minmag").value = "4.5";
+      map.removeLayer(homeCircle);
+      map.flyTo([25, 20], 2, { duration: 0.8 });
+    }
+    load();
+  });
+  $("period").addEventListener("change", load);
+  $("minmag").addEventListener("change", load);
 
-  load();
+  // קישור ישיר לתצוגת ישראל: earthquakes.html#israel
+  if (location.hash === "#israel") {
+    $("region").value = "israel";
+    $("region").dispatchEvent(new Event("change"));
+  } else {
+    load();
+  }
+  connectLive();
   setInterval(load, 5 * 60 * 1000);
 </script>
 </body>

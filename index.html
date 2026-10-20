@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Git ו-GitHub לתלמידים</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap">
+<style>
+  /* ===== הגדרות: כאן משנים את שמות הקבצים או קישורים ===== */
+  /* (ההגדרות עצמן נמצאות בתחתית הקובץ, בתוך ה-script) */
+
+  :root {
+    --bg: #f7f8fb;
+    --surface: #ffffff;
+    --text: #1b2230;
+    --muted: #5b6577;
+    --border: #e3e7ef;
+    --accent: #2563eb;
+    --accent-soft: #e6eefe;
+    --code-bg: #f1f3f8;
+    --shadow: 0 1px 2px rgba(20, 30, 50, .06), 0 8px 24px rgba(20, 30, 50, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f141c;
+      --surface: #161d28;
+      --text: #e7ebf2;
+      --muted: #9aa5b8;
+      --border: #263043;
+      --accent: #6b9bff;
+      --accent-soft: #1c2a45;
+      --code-bg: #1d2533;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f141c;
+    --surface: #161d28;
+    --text: #e7ebf2;
+    --muted: #9aa5b8;
+    --border: #263043;
+    --accent: #6b9bff;
+    --accent-soft: #1c2a45;
+    --code-bg: #1d2533;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Heebo", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+    line-height: 1.65;
+    font-size: 17px;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 16px; }
+
+  header.top {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  header.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 56px; }
+  .brand { font-weight: 800; font-size: 18px; color: var(--text); text-decoration: none; white-space: nowrap; }
+  nav { display: flex; gap: 4px; overflow-x: auto; }
+  nav a {
+    color: var(--muted); text-decoration: none; font-size: 15px;
+    padding: 6px 10px; border-radius: 8px; white-space: nowrap;
+  }
+  nav a:hover { background: var(--accent-soft); color: var(--accent); }
+
+  .hero { padding: 56px 0 32px; }
+  .hero h1 { font-size: clamp(30px, 6vw, 48px); line-height: 1.15; margin: 0 0 12px; font-weight: 800; }
+  .hero p { color: var(--muted); font-size: 19px; margin: 0; max-width: 640px; }
+
+  section { padding: 28px 0; }
+  h2 { font-size: 26px; margin: 0 0 6px; font-weight: 700; }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .media { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; }
+  .media video, .media iframe, .media object { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .media.slides { aspect-ratio: 4 / 3; background: var(--code-bg); }
+  @media (max-width: 600px) { .media.slides { aspect-ratio: 3 / 4; } }
+
+  .placeholder {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; padding: 24px; text-align: center;
+    background: var(--code-bg); color: var(--muted);
+  }
+  .placeholder strong { color: var(--text); font-size: 18px; }
+  .card-foot {
+    display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center;
+    padding: 12px 16px; border-top: 1px solid var(--border); font-size: 15px; color: var(--muted);
+  }
+  .btn {
+    display: inline-block; text-decoration: none; font-weight: 500;
+    background: var(--accent); color: #fff; padding: 8px 14px; border-radius: 10px;
+  }
+
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 0; margin: 0; list-style: none; counter-reset: s; }
+  @media (max-width: 760px) { .steps { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 420px) { .steps { grid-template-columns: 1fr; } }
+  .steps li { padding: 18px; counter-increment: s; }
+  .steps li::before {
+    content: counter(s);
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent); font-weight: 700; margin-bottom: 8px;
+  }
+  .steps h3 { margin: 0 0 4px; font-size: 18px; }
+  .steps p { margin: 0 0 8px; color: var(--muted); font-size: 15px; }
+
+  code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    background: var(--code-bg); padding: 2px 6px; border-radius: 6px; font-size: .9em;
+    direction: ltr; unicode-bidi: isolate; display: inline-block;
+  }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 16px; }
+  th, td { padding: 11px 16px; text-align: right; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  th { background: var(--code-bg); font-weight: 500; color: var(--muted); font-size: 14px; }
+  td:first-child { white-space: nowrap; }
+
+  .tips { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .tips .card { padding: 18px; }
+  .tips h3 { margin: 0 0 4px; font-size: 17px; }
+  .tips p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  footer { padding: 32px 0 48px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--border); margin-top: 24px; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#">Git ו-GitHub</a>
+    <nav>
+      <a href="#video">סרטון</a>
+      <a href="#slides">מצגת</a>
+      <a href="#cycle">מחזור העבודה</a>
+      <a href="#commands">דף פקודות</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <h1>מדריך Git ו-GitHub לתלמידים</h1>
+    <p>איך שומרים את כל ההיסטוריה של הפרויקט, מגבים אותו בענן ועובדים עליו יחד עם חברים לצוות. צפו בסרטון, עברו על המצגת, ונסו בעצמכם.</p>
+  </div>
+
+  <section id="video">
+    <h2>סרטון הדרכה</h2>
+    <p class="sub">שליטה מלאה עם Git ו-GitHub.</p>
+    <div class="card">
+      <div class="media" id="videoBox"></div>
+    </div>
+  </section>
+
+  <section id="slides">
+    <h2>המצגת</h2>
+    <p class="sub">אפשר לדפדף כאן או להוריד ולפתוח במסך מלא.</p>
+    <div class="card">
+      <div class="media slides" id="slidesBox"></div>
+      <div class="card-foot">
+        <span>לא רואים את המצגת בטלפון? פתחו אותה בחלון נפרד.</span>
+        <a class="btn" id="slidesLink" href="#" target="_blank" rel="noopener">פתיחה / הורדה</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="cycle">
+    <h2>מחזור העבודה – 4 צעדים</h2>
+    <p class="sub">כל עבודה ב-Git חוזרת על אותם ארבעה צעדים.</p>
+    <ol class="steps">
+      <li class="card"><h3>עורכים</h3><p>משנים קבצים בתיקיית הפרויקט.</p></li>
+      <li class="card"><h3>בוחרים</h3><p>מה ייכנס לשמירה הבאה.</p><code>git add .</code></li>
+      <li class="card"><h3>שומרים</h3><p>נקודת שמירה עם הסבר.</p><code>git commit -m "..."</code></li>
+      <li class="card"><h3>מעלים</h3><p>שולחים לענן, ל-GitHub.</p><code>git push</code></li>
+    </ol>
+  </section>
+
+  <section id="commands">
+    <h2>דף פקודות</h2>
+    <p class="sub">כדאי להדפיס ולתלות ליד המחשב.</p>
+    <div class="card table-wrap">
+      <table>
+        <thead><tr><th>פקודה</th><th>מה היא עושה</th></tr></thead>
+        <tbody>
+          <tr><td><code>git --version</code></td><td>בודק ש-Git מותקן</td></tr>
+          <tr><td><code>git config --global user.name ".."</code></td><td>מגדיר שם (וגם <code>user.email</code> לאימייל)</td></tr>
+          <tr><td><code>git init</code></td><td>הופך תיקייה רגילה למאגר</td></tr>
+          <tr><td><code>git clone &lt;url&gt;</code></td><td>מוריד מאגר מ-GitHub למחשב</td></tr>
+          <tr><td><code>git status</code></td><td>מה השתנה?</td></tr>
+          <tr><td><code>git add .</code></td><td>מכין את כל השינויים לשמירה</td></tr>
+          <tr><td><code>git commit -m ".."</code></td><td>יוצר נקודת שמירה</td></tr>
+          <tr><td><code>git push</code></td><td>מעלה ל-GitHub</td></tr>
+          <tr><td><code>git pull</code></td><td>מוריד שינויים חדשים מ-GitHub</td></tr>
+          <tr><td><code>git log --oneline</code></td><td>היסטוריית נקודות השמירה</td></tr>
+          <tr><td><code>git branch &lt;name&gt;</code></td><td>יוצר ענף חדש</td></tr>
+          <tr><td><code>git switch &lt;name&gt;</code></td><td>עובר לענף</td></tr>
+          <tr><td><code>git merge &lt;name&gt;</code></td><td>ממזג ענף לענף הנוכחי</td></tr>
+          <tr><td><code>git diff</code></td><td>מה בדיוק השתנה בכל שורה</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>כללי זהב</h2>
+    <div class="tips">
+      <div class="card"><h3>הודעות ברורות</h3><p>כתבו מה השתנה, למשל <code>Add contact form</code>, ולא "asdf".</p></div>
+      <div class="card"><h3>בלי סודות</h3><p>אל תעלו סיסמאות, מפתחות גישה או מידע אישי. שימו אותם ב-<code>.gitignore</code>.</p></div>
+      <div class="card"><h3>קבצים קטנים</h3><p>GitHub חוסם קבצים מעל 100MB. דרך הדפדפן אפשר להעלות עד 25MB.</p></div>
+      <div class="card"><h3>קודם pull</h3><p>קיבלתם <code>rejected</code>? הריצו <code>git pull</code> ואחר כך <code>git push</code>.</p></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    מקורות:
+    <a href="https://git-scm.com" target="_blank" rel="noopener">Git – הורדה רשמית</a> ·
+    <a href="https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github" target="_blank" rel="noopener">GitHub Docs – קבצים גדולים</a> ·
+    <a href="https://education.github.com" target="_blank" rel="noopener">GitHub Education</a>
+  </div>
+</footer>
+
+<script>
+  /* ================== הגדרות ==================
+     VIDEO  = שם קובץ הסרטון שנמצא באותה תיקייה כמו index.html
+     SLIDES = שם קובץ ה-PDF שנמצא באותה תיקייה כמו index.html,
+              או קישור "פרסום לאינטרנט" של Google Slides
+  ============================================== */
+  const VIDEO  = encodeURI("שליטה_מלאה_עם_Git_ו-GitHub.mp4");
+  const SLIDES = encodeURI("שיעור GitHub.pdf");
+
+  function placeholder(title, text) {
+    return '<div class="placeholder"><strong>' + title + '</strong><span>' + text + '</span></div>';
+  }
+
+  // סרטון
+  const videoBox = document.getElementById("videoBox");
+  const v = document.createElement("video");
+  v.controls = true;
+  v.preload = "metadata";
+  v.playsInline = true;
+  v.src = VIDEO;
+  v.addEventListener("error", function () {
+    videoBox.innerHTML = placeholder("הסרטון לא נטען", "שימו קובץ בשם " + decodeURI(VIDEO) + " באותה תיקייה של האתר.");
+  });
+  videoBox.appendChild(v);
+
+  // מצגת
+  const slidesBox = document.getElementById("slidesBox");
+  document.getElementById("slidesLink").href = SLIDES;
+  const fallback = placeholder("המצגת לא נטענה", "שימו קובץ בשם " + decodeURI(SLIDES) + " באותה תיקייה, או השתמשו בכפתור למטה.");
+  if (/docs\.google\.com\/presentation/.test(SLIDES)) {
+    const embed = SLIDES.replace(/\/(pub|edit)(\?.*)?$/, "/embed$2");
+    slidesBox.innerHTML = '<iframe src="' + embed + '" title="מצגת" allowfullscreen></iframe>';
+  } else {
+    slidesBox.innerHTML = '<object data="' + SLIDES + '#view=FitH" type="application/pdf">' + fallback + '</object>';
+  }
+</script>
+</body>
+</html>
